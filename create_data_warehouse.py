@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime
 import os
 
-# Konfiguracja połączenia z bazą danych
+# Database connection configuration
 server = '192.168.0.118'
 database = 'Olist'
 driver = 'SQL Server Native Client 11.0'
@@ -21,29 +21,29 @@ connection_string = (
 )
 
 def create_connection():
-    """Tworzy połączenie z bazą danych"""
+    """Creates a connection to the database"""
     try:
         conn = pyodbc.connect(connection_string)
         return conn
     except Exception as e:
-        print(f"Błąd połączenia z bazą danych: {e}")
+        print(f"Database connection error: {e}")
         return None
 
 def load_csv_data():
-    """Ładuje dane z plików CSV"""
-    print("Ładowanie danych z plików CSV...")
+    """Loads data from CSV files"""
+    print("Loading data from CSV files...")
     
-    # Ścieżki do plików
+    # File paths
     data_dir = "data"
     
-    # Ładowanie danych Olist z odpowiednim kodowaniem
+    # Load Olist data with appropriate encoding
     customers = pd.read_csv(f"{data_dir}/olist/olist_customers_dataset.csv", encoding='utf-8')
     orders = pd.read_csv(f"{data_dir}/olist/olist_orders_dataset.csv", encoding='utf-8')
     order_items = pd.read_csv(f"{data_dir}/olist/olist_order_items_dataset.csv", encoding='utf-8')
     sellers = pd.read_csv(f"{data_dir}/olist/olist_sellers_dataset.csv", encoding='utf-8')
     products = pd.read_csv(f"{data_dir}/olist/olist_products_dataset.csv", encoding='utf-8')
     
-    # Ładowanie danych o miastach brazylijskich - może być inne kodowanie
+    # Load Brazilian cities data - encoding may vary
     try:
         cities = pd.read_csv(f"{data_dir}/cities/BRAZIL_CITIES_REV2022.CSV", encoding='utf-8')
     except UnicodeDecodeError:
@@ -52,44 +52,44 @@ def load_csv_data():
         except UnicodeDecodeError:
             cities = pd.read_csv(f"{data_dir}/cities/BRAZIL_CITIES_REV2022.CSV", encoding='cp1252')
     
-    print(f"Załadowano {len(customers)} klientów")
-    print(f"Załadowano {len(orders)} zamówień")
-    print(f"Załadowano {len(order_items)} pozycji zamówień")
-    print(f"Załadowano {len(sellers)} sprzedawców")
-    print(f"Załadowano {len(products)} produktów")
-    print(f"Załadowano {len(cities)} miast")
+    print(f"Loaded {len(customers)} customers")
+    print(f"Loaded {len(orders)} orders")
+    print(f"Loaded {len(order_items)} order items")
+    print(f"Loaded {len(sellers)} sellers")
+    print(f"Loaded {len(products)} products")
+    print(f"Loaded {len(cities)} cities")
     
     return customers, orders, order_items, sellers, products, cities
 
 def create_state_region_mapping():
-    """Tworzy mapowanie stanów na regiony Brazylii"""
+    """Creates a mapping of states to Brazilian regions"""
     state_region_mapping = {
-        # Region Północny (Norte)
+        # North Region (Norte)
         'AC': 'Norte', 'AP': 'Norte', 'AM': 'Norte', 'PA': 'Norte', 
         'RO': 'Norte', 'RR': 'Norte', 'TO': 'Norte',
         
-        # Region Północno-wschodni (Nordeste)
+        # Northeast Region (Nordeste)
         'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste',
         'PB': 'Nordeste', 'PE': 'Nordeste', 'PI': 'Nordeste', 'RN': 'Nordeste', 'SE': 'Nordeste',
         
-        # Region Środkowo-zachodni (Centro-Oeste)
+        # Central-West Region (Centro-Oeste)
         'GO': 'Centro-Oeste', 'MT': 'Centro-Oeste', 'MS': 'Centro-Oeste', 'DF': 'Centro-Oeste',
         
-        # Region Południowo-wschodni (Sudeste)
+        # Southeast Region (Sudeste)
         'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
         
-        # Region Południowy (Sul)
+        # South Region (Sul)
         'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul'
     }
     return state_region_mapping
 
 def create_database_schema(conn):
-    """Tworzy schemat bazy danych dla hurtowni"""
-    print("Tworzenie schematu bazy danych...")
+    """Creates the database schema for the data warehouse"""
+    print("Creating database schema...")
     
     cursor = conn.cursor()
     
-    # Usuwanie istniejących tabel (w odwrotnej kolejności ze względu na klucze obce)
+    # Drop existing tables (in reverse order due to foreign keys)
     drop_tables = [
         "DROP TABLE IF EXISTS FactOrders",
         "DROP TABLE IF EXISTS DimTime",
@@ -105,7 +105,7 @@ def create_database_schema(conn):
         except:
             pass
     
-    # Wymiar czasu - struktura hierarchiczna
+    # Time dimension - hierarchical structure
     cursor.execute("""
     CREATE TABLE DimTime (
         TimeKey INT IDENTITY(1,1) PRIMARY KEY,
@@ -121,7 +121,7 @@ def create_database_schema(conn):
     )
     """)
     
-    # Wymiar lokalizacji klienta - zdenormalizowany, hierarchiczny
+    # Customer location dimension - denormalized, hierarchical
     cursor.execute("""
     CREATE TABLE DimCustomerLocation (
         CustomerLocationKey INT IDENTITY(1,1) PRIMARY KEY,
@@ -138,7 +138,7 @@ def create_database_schema(conn):
     )
     """)
     
-    # Wymiar lokalizacji sprzedawcy - zdenormalizowany, hierarchiczny  
+    # Seller location dimension - denormalized, hierarchical
     cursor.execute("""
     CREATE TABLE DimSellerLocation (
         SellerLocationKey INT IDENTITY(1,1) PRIMARY KEY,
@@ -155,7 +155,7 @@ def create_database_schema(conn):
     )
     """)
     
-    # Wymiar produktu
+    # Product dimension
     cursor.execute("""
     CREATE TABLE DimProduct (
         ProductKey INT IDENTITY(1,1) PRIMARY KEY,
@@ -171,7 +171,7 @@ def create_database_schema(conn):
     )
     """)
     
-    # Wymiar statusu zamówienia
+    # Order status dimension
     cursor.execute("""
     CREATE TABLE DimOrderStatus (
         OrderStatusKey INT IDENTITY(1,1) PRIMARY KEY,
@@ -180,7 +180,7 @@ def create_database_schema(conn):
     )
     """)
     
-    # Tabela faktów
+    # Fact table
     cursor.execute("""
     CREATE TABLE FactOrders (
         FactKey INT IDENTITY(1,1) PRIMARY KEY,
@@ -191,16 +191,16 @@ def create_database_schema(conn):
         ProductKey INT,
         OrderStatusKey INT,
         
-        -- Miary addytywne
+        -- Additive measures
         TotalPrice DECIMAL(18,2),
         FreightValue DECIMAL(18,2),
         Quantity INT,
         
-        -- Miary nieaddytywne (będą agregowane osobno)
+        -- Non-additive measures (will be aggregated separately)
         DeliveryTimeDays INT,
         ProcessingTimeDays INT,
         
-        -- Daty dla obliczeń
+        -- Dates for calculations
         OrderDate DATETIME,
         DeliveryDate DATETIME,
         EstimatedDeliveryDate DATETIME,
@@ -214,26 +214,26 @@ def create_database_schema(conn):
     """)
     
     conn.commit()
-    print("Schemat bazy danych został utworzony!")
+    print("Database schema has been created!")
 
 def populate_dim_time(conn, start_date='2016-01-01', end_date='2019-12-31'):
-    """Wypełnia wymiar czasu"""
-    print("Wypełnianie wymiaru czasu...")
+    """Fills the time dimension"""
+    print("Filling the time dimension...")
     
     cursor = conn.cursor()
     
-    # Generowanie dat
+    # Generate dates
     date_range = pd.date_range(start=start_date, end=end_date, freq='D')
     
     month_names = {
-        1: 'Styczeń', 2: 'Luty', 3: 'Marzec', 4: 'Kwiecień',
-        5: 'Maj', 6: 'Czerwiec', 7: 'Lipiec', 8: 'Sierpień',
-        9: 'Wrzesień', 10: 'Październik', 11: 'Listopad', 12: 'Grudzień'
+        1: 'January', 2: 'February', 3: 'March', 4: 'April',
+        5: 'May', 6: 'June', 7: 'July', 8: 'August',
+        9: 'September', 10: 'October', 11: 'November', 12: 'December'
     }
     
     day_names = {
-        0: 'Poniedziałek', 1: 'Wtorek', 2: 'Środa', 3: 'Czwartek',
-        4: 'Piątek', 5: 'Sobota', 6: 'Niedziela'
+        0: 'Monday', 1: 'Tuesday', 2: 'Wednesday', 3: 'Thursday',
+        4: 'Friday', 5: 'Saturday', 6: 'Sunday'
     }
     
     for date in date_range:
@@ -255,37 +255,37 @@ def populate_dim_time(conn, start_date='2016-01-01', end_date='2019-12-31'):
         ))
     
     conn.commit()
-    print(f"Dodano {len(date_range)} rekordów do wymiaru czasu")
+    print(f"Added {len(date_range)} records to the time dimension")
 
 def populate_location_dimensions(conn, customers, sellers, cities):
-    """Wypełnia wymiary lokalizacji (zdenormalizowane)"""
-    print("Wypełnianie wymiarów lokalizacji...")
+    """Fills the location dimensions (denormalized)"""
+    print("Filling location dimensions...")
     
     cursor = conn.cursor()
     state_region_mapping = create_state_region_mapping()
     
-    # Przygotowanie danych o miastach z dodatkowymi informacjami
+    # Prepare city data with additional information
     cities_clean = cities.copy()
     cities_clean['CITY'] = cities_clean['CITY'].str.strip().str.lower()
     cities_clean['STATE'] = cities_clean['STATE'].str.strip().str.upper()
     
-    # Agregacja danych na poziomie stanu
+    # Aggregate data at the state level
     state_stats = cities_clean.groupby('STATE').agg({
         'IBGE_POP': 'sum',
         'GDP_CAPITA': 'mean',
         'IDHM': 'mean'
     }).reset_index()
     
-    # Wypełnianie wymiaru lokalizacji klienta
+    # Fill the customer location dimension
     customer_locations = customers[['customer_zip_code_prefix', 'customer_city', 'customer_state']].drop_duplicates()
     
     for _, row in customer_locations.iterrows():
         zip_code = str(row['customer_zip_code_prefix'])
-        city = row['customer_city'].strip().lower() if pd.notna(row['customer_city']) else 'nieznane'
+        city = row['customer_city'].strip().lower() if pd.notna(row['customer_city']) else 'unknown'
         state = row['customer_state'].strip().upper() if pd.notna(row['customer_state']) else 'UNK'
-        region = state_region_mapping.get(state, 'Nieznany')
+        region = state_region_mapping.get(state, 'Unknown')
         
-        # Znajdowanie danych o mieście
+        # Find city data
         city_data = cities_clean[
             (cities_clean['CITY'] == city) & 
             (cities_clean['STATE'] == state)
@@ -304,7 +304,7 @@ def populate_location_dimensions(conn, customers, sellers, cities):
             lat = 0
             lon = 0
         
-        # Dane o stanie
+        # State data
         state_data = state_stats[state_stats['STATE'] == state]
         state_pop = int(state_data.iloc[0]['IBGE_POP']) if not state_data.empty and pd.notna(state_data.iloc[0]['IBGE_POP']) else 0
         
@@ -314,16 +314,16 @@ def populate_location_dimensions(conn, customers, sellers, cities):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (zip_code, city, state, region, city_pop, state_pop, gdp_per_capita, hdi, lat, lon))
     
-    # Wypełnianie wymiaru lokalizacji sprzedawcy
+    # Fill the seller location dimension
     seller_locations = sellers[['seller_zip_code_prefix', 'seller_city', 'seller_state']].drop_duplicates()
     
     for _, row in seller_locations.iterrows():
         zip_code = str(row['seller_zip_code_prefix'])
-        city = row['seller_city'].strip().lower() if pd.notna(row['seller_city']) else 'nieznane'
+        city = row['seller_city'].strip().lower() if pd.notna(row['seller_city']) else 'unknown'
         state = row['seller_state'].strip().upper() if pd.notna(row['seller_state']) else 'UNK'
-        region = state_region_mapping.get(state, 'Nieznany')
+        region = state_region_mapping.get(state, 'Unknown')
         
-        # Znajdowanie danych o mieście
+        # Find city data
         city_data = cities_clean[
             (cities_clean['CITY'] == city) & 
             (cities_clean['STATE'] == state)
@@ -342,7 +342,7 @@ def populate_location_dimensions(conn, customers, sellers, cities):
             lat = 0
             lon = 0
         
-        # Dane o stanie
+        # State data
         state_data = state_stats[state_stats['STATE'] == state]
         state_pop = int(state_data.iloc[0]['IBGE_POP']) if not state_data.empty and pd.notna(state_data.iloc[0]['IBGE_POP']) else 0
         
@@ -353,43 +353,43 @@ def populate_location_dimensions(conn, customers, sellers, cities):
         """, (zip_code, city, state, region, city_pop, state_pop, gdp_per_capita, hdi, lat, lon))
     
     conn.commit()
-    print(f"Dodano {len(customer_locations)} lokalizacji klientów")
-    print(f"Dodano {len(seller_locations)} lokalizacji sprzedawców")
+    print(f"Added {len(customer_locations)} customer locations")
+    print(f"Added {len(seller_locations)} seller locations")
 
 def populate_dim_product(conn, products):
-    """Wypełnia wymiar produktu"""
-    print("Wypełnianie wymiaru produktu...")
+    """Fills the product dimension"""
+    print("Filling the product dimension...")
     
     cursor = conn.cursor()
     
     for _, row in products.iterrows():
         product_id = row['product_id']
-        category = row['product_category_name'] if pd.notna(row['product_category_name']) else 'nieznana'
+        category = row['product_category_name'] if pd.notna(row['product_category_name']) else 'unknown'
         weight = float(row['product_weight_g']) if pd.notna(row['product_weight_g']) else 0
         length = float(row['product_length_cm']) if pd.notna(row['product_length_cm']) else 0
         height = float(row['product_height_cm']) if pd.notna(row['product_height_cm']) else 0
         width = float(row['product_width_cm']) if pd.notna(row['product_width_cm']) else 0
         
-        # Kategoryzacja wagi
+        # Weight categorization
         if weight == 0:
-            weight_category = 'Nieznana'
+            weight_category = 'Unknown'
         elif weight <= 100:
-            weight_category = 'Lekki'
+            weight_category = 'Light'
         elif weight <= 1000:
-            weight_category = 'Średni'
+            weight_category = 'Medium'
         else:
-            weight_category = 'Ciężki'
+            weight_category = 'Heavy'
         
-        # Kategoryzacja rozmiaru (na podstawie objętości)
+        # Size categorization (based on volume)
         volume = length * height * width
         if volume == 0:
-            size_category = 'Nieznany'
+            size_category = 'Unknown'
         elif volume <= 1000:
-            size_category = 'Mały'
+            size_category = 'Small'
         elif volume <= 10000:
-            size_category = 'Średni'
+            size_category = 'Medium'
         else:
-            size_category = 'Duży'
+            size_category = 'Large'
         
         cursor.execute("""
         INSERT INTO DimProduct 
@@ -398,23 +398,23 @@ def populate_dim_product(conn, products):
         """, (product_id, category, weight, length, height, width, weight_category, size_category))
     
     conn.commit()
-    print(f"Dodano {len(products)} produktów")
+    print(f"Added {len(products)} products")
 
 def populate_dim_order_status(conn, orders):
-    """Wypełnia wymiar statusu zamówienia"""
-    print("Wypełnianie wymiaru statusu zamówienia...")
+    """Fills the order status dimension"""
+    print("Filling the order status dimension...")
     
     cursor = conn.cursor()
     
     status_descriptions = {
-        'delivered': 'Zamówienie zostało dostarczone',
-        'shipped': 'Zamówienie zostało wysłane',
-        'processing': 'Zamówienie jest przetwarzane',
-        'canceled': 'Zamówienie zostało anulowane',
-        'unavailable': 'Produkt niedostępny',
-        'created': 'Zamówienie utworzone',
-        'approved': 'Zamówienie zatwierdzone',
-        'invoiced': 'Zamówienie zafakturowane'
+        'delivered': 'Order delivered',
+        'shipped': 'Order shipped',
+        'processing': 'Order processing',
+        'canceled': 'Order canceled',
+        'unavailable': 'Product unavailable',
+        'created': 'Order created',
+        'approved': 'Order approved',
+        'invoiced': 'Order invoiced'
     }
     
     unique_statuses = orders['order_status'].unique()
@@ -428,23 +428,23 @@ def populate_dim_order_status(conn, orders):
             """, (status, description))
     
     conn.commit()
-    print(f"Dodano {len(unique_statuses)} statusów zamówień")
+    print(f"Added {len(unique_statuses)} order statuses")
 
 def populate_fact_table(conn, orders, order_items, customers, sellers, products):
-    """Wypełnia tabelę faktów"""
-    print("Wypełnianie tabeli faktów...")
+    """Fills the fact table"""
+    print("Filling the fact table...")
     
     cursor = conn.cursor()
     
-    # Łączenie wszystkich potrzebnych danych
+    # Join all necessary data
     fact_data = order_items.merge(orders, on='order_id', how='inner')
     fact_data = fact_data.merge(customers, on='customer_id', how='inner')
     fact_data = fact_data.merge(sellers, on='seller_id', how='inner')
     fact_data = fact_data.merge(products, on='product_id', how='inner')
     
-    print(f"Przygotowano {len(fact_data)} rekordów do załadowania")
+    print(f"Prepared {len(fact_data)} records for loading")
     
-    # Pobieranie kluczy wymiarów
+    # Get dimension keys
     time_keys = {}
     cursor.execute("SELECT TimeKey, FullDate FROM DimTime")
     for row in cursor.fetchall():
@@ -472,19 +472,19 @@ def populate_fact_table(conn, orders, order_items, customers, sellers, products)
     for row in cursor.fetchall():
         status_keys[row[1]] = row[0]
     
-    # Wstawianie danych do tabeli faktów
+    # Insert data into the fact table
     inserted_count = 0
     batch_size = 1000
     batch_data = []
     
     for _, row in fact_data.iterrows():
         try:
-            # Parsowanie dat
+            # Parse dates
             order_date = pd.to_datetime(row['order_purchase_timestamp'])
             delivery_date = pd.to_datetime(row['order_delivered_customer_date']) if pd.notna(row['order_delivered_customer_date']) else None
             estimated_delivery_date = pd.to_datetime(row['order_estimated_delivery_date']) if pd.notna(row['order_estimated_delivery_date']) else None
             
-            # Znajdowanie kluczy
+            # Find keys
             time_key = time_keys.get(order_date.date())
             if not time_key:
                 continue
@@ -507,12 +507,12 @@ def populate_fact_table(conn, orders, order_items, customers, sellers, products)
             if not status_key:
                 continue
             
-            # Obliczanie miar
+            # Calculate measures
             total_price = float(row['price']) if pd.notna(row['price']) else 0
             freight_value = float(row['freight_value']) if pd.notna(row['freight_value']) else 0
-            quantity = 1  # każdy wiersz to jedna pozycja
+            quantity = 1  # each row is one item
             
-            # Obliczanie czasu dostawy (nieaddytywna miara)
+            # Calculate delivery time (non-additive measure)
             delivery_time_days = None
             processing_time_days = None
             
@@ -543,14 +543,14 @@ def populate_fact_table(conn, orders, order_items, customers, sellers, products)
                 batch_data = []
                 
                 if inserted_count % 5000 == 0:
-                    print(f"Wstawiono {inserted_count} rekordów...")
+                    print(f"Inserted {inserted_count} records...")
                     conn.commit()
         
         except Exception as e:
-            print(f"Błąd przetwarzania rekordu: {e}")
+            print(f"Error processing record: {e}")
             continue
     
-    # Wstawienie pozostałych rekordów
+    # Insert remaining records
     if batch_data:
         cursor.executemany("""
         INSERT INTO FactOrders 
@@ -562,17 +562,17 @@ def populate_fact_table(conn, orders, order_items, customers, sellers, products)
         inserted_count += len(batch_data)
     
     conn.commit()
-    print(f"Dodano {inserted_count} rekordów do tabeli faktów")
+    print(f"Added {inserted_count} records to the fact table")
 
 def create_sample_queries(conn):
-    """Tworzy przykładowe zapytania analityczne"""
-    print("\nTworzenie przykładowych zapytań analitycznych...")
+    """Creates sample analytical queries"""
+    print("\nCreating sample analytical queries...")
     
     cursor = conn.cursor()
     
     queries = [
         {
-            'name': 'Sprzedaż według regionów i czasu (hierarchie)',
+            'name': 'Sales by region and time (hierarchies)',
             'sql': """
             SELECT 
                 cl.CustomerRegion,
@@ -592,7 +592,7 @@ def create_sample_queries(conn):
             """
         },
         {
-            'name': 'Analiza produktów według kategorii i rozmiaru',
+            'name': 'Product analysis by category and size',
             'sql': """
             SELECT 
                 p.ProductCategory,
@@ -610,7 +610,7 @@ def create_sample_queries(conn):
             """
         },
         {
-            'name': 'Wydajność dostaw według lokalizacji sprzedawcy',
+            'name': 'Delivery performance by seller location',
             'sql': """
             SELECT 
                 sl.SellerRegion,
@@ -635,65 +635,65 @@ def create_sample_queries(conn):
         try:
             cursor.execute(query['sql'])
             results = cursor.fetchall()
-            print(f"Zwrócono {len(results)} wyników")
+            print(f"Returned {len(results)} results")
             
-            # Wyświetlenie pierwszych 5 wyników
+            # Display the first 5 results
             for i, row in enumerate(results[:5]):
                 print(f"  {i+1}: {row}")
             if len(results) > 5:
-                print(f"  ... i {len(results)-5} więcej")
+                print(f"  ... and {len(results)-5} more")
                 
         except Exception as e:
-            print(f"Błąd wykonania zapytania: {e}")
+            print(f"Query execution error: {e}")
 
 def main():
-    """Główna funkcja programu"""
-    print("=== TWORZENIE HURTOWNI DANYCH OLIST ===")
+    """Main program function"""
+    print("=== DATA WAREHOUSE CREATION FOR OLIST ===")
     
-    # Połączenie z bazą danych
+    # Database connection
     conn = create_connection()
     if not conn:
         return
     
     try:
-        # Ładowanie danych CSV
+        # Load CSV data
         customers, orders, order_items, sellers, products, cities = load_csv_data()
         
-        # Tworzenie schematu bazy danych
+        # Create database schema
         create_database_schema(conn)
         
-        # Wypełnianie wymiarów
+        # Fill dimensions
         populate_dim_time(conn)
         populate_location_dimensions(conn, customers, sellers, cities)
         populate_dim_product(conn, products)
         populate_dim_order_status(conn, orders)
         
-        # Wypełnianie tabeli faktów
+        # Fill fact table
         populate_fact_table(conn, orders, order_items, customers, sellers, products)
         
-        # Sprawdzenie liczby rekordów
+        # Check record count
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM FactOrders")
         fact_count = cursor.fetchone()[0]
-        print(f"\nTabela faktów zawiera {fact_count} rekordów")
+        print(f"\nFact table contains {fact_count} records")
         
         if fact_count >= 10000:
-            print("✓ Wymaganie minimum 10,000 rekordów zostało spełnione!")
+            print("✓ Minimum requirement of 10,000 records met!")
         else:
-            print("⚠ Uwaga: Tabela faktów zawiera mniej niż 10,000 rekordów")
+            print("⚠ Warning: Fact table contains less than 10,000 records")
         
-        # Przykładowe zapytania analityczne
+        # Sample analytical queries
         create_sample_queries(conn)
         
-        print("\n=== HURTOWNIA DANYCH ZOSTAŁA POMYŚLNIE UTWORZONA ===")
-        print("\nStruktura hurtowni:")
-        print("• 5 wymiarów (w tym 3 hierarchiczne: czas, lokalizacja klienta, lokalizacja sprzedawcy)")
-        print("• 3 miary (2 addytywne: TotalPrice, FreightValue; 1 nieaddytywna: średni czas dostawy)")
-        print("• Zdenormalizowane wymiary lokalizacji z danymi demograficznymi")
-        print("• Połączone dane Olist z danymi o miastach brazylijskich")
+        print("\n=== DATA WAREHOUSE SUCCESSFULLY CREATED ===")
+        print("\nData warehouse structure:")
+        print("• 5 dimensions (including 3 hierarchical: time, customer location, seller location)")
+        print("• 3 measures (2 additive: TotalPrice, FreightValue; 1 non-additive: average delivery time)")
+        print("• Denormalized location dimensions with demographic data")
+        print("• Combined Olist data with Brazilian city data")
         
     except Exception as e:
-        print(f"Błąd podczas tworzenia hurtowni: {e}")
+        print(f"Error creating data warehouse: {e}")
     finally:
         conn.close()
 
