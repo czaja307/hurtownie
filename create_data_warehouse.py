@@ -25,6 +25,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
+from fuzzywuzzy import fuzz, process
+from unidecode import unidecode
 
 class OlistDataWarehouse:
     def __init__(self):
@@ -46,7 +48,6 @@ class OlistDataWarehouse:
         
         # Paths to data files
         self.data_path = r'c:\\Users\\Kuba\\PycharmProjects\\hurtownie\\data'
-        
     def connect_db(self):
         """Establish connection with the database"""
         try:
@@ -56,6 +57,67 @@ class OlistDataWarehouse:
         except Exception as e:
             print(f"Error connecting to the database: {e}")
             return None
+    
+    def normalize_city_name(self, city_name):
+        """Normalize city name for better matching"""
+        if pd.isna(city_name) or not city_name:
+            return ""
+        
+        # Convert to string and normalize
+        normalized = str(city_name).lower().strip()
+        # Remove accents
+        normalized = unidecode(normalized)
+        # Remove common words and clean up
+        replacements = {
+            "\'": "",
+            "\"": "",
+            "-": " ",
+            "_": " ",
+        }
+        
+        for old, new in replacements.items():
+            normalized = normalized.replace(old, new)
+        
+        # Remove multiple spaces
+        normalized = " ".join(normalized.split())
+        return normalized
+    
+    def fuzzy_match_city(self, customer_city, customer_state, cities_by_state, threshold=80):
+        """Find the best matching city using fuzzy matching"""
+        if customer_state not in cities_by_state:
+            return {}
+        
+        normalized_customer_city = self.normalize_city_name(customer_city)
+        if not normalized_customer_city:
+            return {}
+        
+        # Get cities for this state
+        state_cities = cities_by_state[customer_state]
+        
+        # First try exact match
+        for city_data in state_cities:
+            if normalized_customer_city == city_data['normalized_name']:
+                return city_data
+        
+        # If no exact match, try fuzzy matching
+        city_names = [(city_data['normalized_name'], city_data) for city_data in state_cities]
+        
+        if city_names:
+            # Use process.extractOne to find the best match
+            result = process.extractOne(
+                normalized_customer_city, 
+                [name for name, _ in city_names],
+                scorer=fuzz.token_sort_ratio
+            )
+            
+            if result and result[1] >= threshold:
+                matched_name = result[0]
+                # Find the corresponding city data
+                for name, city_data in city_names:
+                    if name == matched_name:
+                        return city_data
+        
+        return {}
     
     def create_database_schema(self):
         """Create the data warehouse database schema"""
@@ -162,7 +224,8 @@ class OlistDataWarehouse:
                 Review_Score INT,
                 Review_Category NVARCHAR(30),
                 Satisfaction_Level NVARCHAR(20),
-                Has_Comment BIT
+                Has_Comment BIT,
+                Comment_Length_Category NVARCHAR(30)
             );
             """
             
@@ -308,10 +371,10 @@ class OlistDataWarehouse:
             return False
         finally:
             conn.close()
-    
+            
     def create_customer_dimension(self):
-        """Create customer dimension with economic data"""
-        print("Creating customer dimension...")
+        """Create customer dimension with economic data using fuzzy matching"""
+        print("Creating customer dimension with fuzzy city matching...")
         
         conn = self.connect_db()
         if not conn:
@@ -330,24 +393,62 @@ class OlistDataWarehouse:
                 'SC': 'South', 'SP': 'Southeast', 'SE': 'Northeast', 'TO': 'North'
             }
             
-            # Prepare cities data (normalize names)
-            cities_clean = self.cities_df.copy()
-            cities_clean['CITY'] = cities_clean['CITY'].str.lower().str.strip()
-            cities_clean['STATE'] = cities_clean['STATE'].str.upper().str.strip()
+            # Prepare cities data with normalized names for fuzzy matching
+            print("  Preparing cities data for fuzzy matching...")
+            cities_by_state = {}
             
-            # Cities dictionary for quick lookup
-            cities_dict = {}
-            for _, row in cities_clean.iterrows():
-                key = f"{row['CITY']}_{row['STATE']}"
-                cities_dict[key] = row
+            for _, row in self.cities_df.iterrows():
+                state = str(row['STATE']).upper().strip()
+                if state not in cities_by_state:
+                    cities_by_state[state] = []
+                
+                city_data = {
+                    'original_name': row['CITY'],
+                    'normalized_name': self.normalize_city_name(row['CITY']),
+                    'state': state,
+                    'population': row.get('IBGE_POP', 0) if pd.notna(row.get('IBGE_POP', 0)) else 0,
+                    'gdp_capita': row.get('GDP_CAPITA', 0) if pd.notna(row.get('GDP_CAPITA', 0)) else 0,
+                    'hdi': row.get('IDHM', 0) if pd.notna(row.get('IDHM', 0)) else 0,
+                    'hdi_income': row.get('IDHM_Renda', 0) if pd.notna(row.get('IDHM_Renda', 0)) else 0,
+                    'hdi_education': row.get('IDHM_Educacao', 0) if pd.notna(row.get('IDHM_Educacao', 0)) else 0,
+                    'hdi_longevity': row.get('IDHM_Longevidade', 0) if pd.notna(row.get('IDHM_Longevidade', 0)) else 0,
+                    'is_capital': 1 if row.get('CAPITAL', 0) == 1 else 0,
+                    'category': str(row.get('CATEGORIA_TUR', 'None')) if pd.notna(row.get('CATEGORIA_TUR')) else 'None'
+                }
+                cities_by_state[state].append(city_data)
+            
+            print(f"  Loaded {len(self.cities_df)} cities from {len(cities_by_state)} states")
+            
+            # Track matching statistics
+            exact_matches = 0
+            fuzzy_matches = 0
+            no_matches = 0
+            
+            # Process customers
+            total_customers = len(self.customers_df)
+            processed = 0
             
             for _, customer in self.customers_df.iterrows():
-                customer_city = str(customer['customer_city']).lower().strip()
+                customer_city = str(customer['customer_city']).strip()
                 customer_state = str(customer['customer_state']).upper().strip()
                 
-                # Lookup city data
-                city_key = f"{customer_city}_{customer_state}"
-                city_data = cities_dict.get(city_key, {})
+                # Find best matching city using fuzzy logic
+                city_data = self.fuzzy_match_city(customer_city, customer_state, cities_by_state)
+                
+                if city_data:
+                    # Check if it was an exact match
+                    normalized_customer = self.normalize_city_name(customer_city)
+                    if normalized_customer == city_data['normalized_name']:
+                        exact_matches += 1
+                    else:
+                        fuzzy_matches += 1
+                        # Log fuzzy matches for debugging
+                        if processed < 10:  # Log first 10 fuzzy matches
+                            print(f"    Fuzzy match: '{customer_city}' -> '{city_data['original_name']}'")
+                else:
+                    no_matches += 1
+                    if processed < 5:  # Log first 5 non-matches
+                        print(f"    No match found for: '{customer_city}', {customer_state}")
                 
                 # Assign region
                 region = region_map.get(customer_state, 'Unknown')
@@ -367,18 +468,30 @@ class OlistDataWarehouse:
                     customer['customer_city'],
                     customer['customer_state'],
                     region,
-                    city_data.get('IBGE_POP', 0),
-                    city_data.get('GDP_CAPITA', 0),
-                    city_data.get('IDHM', 0),
-                    city_data.get('IDHM_Renda', 0),
-                    city_data.get('IDHM_Educacao', 0),
-                    city_data.get('IDHM_Longevidade', 0),
-                    1 if city_data.get('CAPITAL', 0) == 1 else 0,
-                    city_data.get('CATEGORIA_TUR', 'None')
+                    city_data.get('population', 0),
+                    city_data.get('gdp_capita', 0),
+                    city_data.get('hdi', 0),
+                    city_data.get('hdi_income', 0),
+                    city_data.get('hdi_education', 0),
+                    city_data.get('hdi_longevity', 0),
+                    city_data.get('is_capital', 0),
+                    city_data.get('category', 'None')
                 ))
+                
+                processed += 1
+                if processed % 10000 == 0:
+                    print(f"    Processed {processed}/{total_customers} customers...")
             
             conn.commit()
-            print(f"  Customer dimension created: {len(self.customers_df)} records")
+            
+            # Print matching statistics
+            print(f"  Customer dimension created: {total_customers} records")
+            print(f"  Matching statistics:")
+            print(f"    Exact matches: {exact_matches} ({exact_matches/total_customers*100:.1f}%)")            
+            print(f"    Fuzzy matches: {fuzzy_matches} ({fuzzy_matches/total_customers*100:.1f}%)")
+            print(f"    No matches: {no_matches} ({no_matches/total_customers*100:.1f}%)")
+            print(f"    Total matched: {exact_matches + fuzzy_matches} ({(exact_matches + fuzzy_matches)/total_customers*100:.1f}%)")
+            
             return True
             
         except Exception as e:
@@ -389,8 +502,8 @@ class OlistDataWarehouse:
             conn.close()
     
     def create_seller_dimension(self):
-        """Create seller dimension with economic data"""
-        print("Creating seller dimension...")
+        """Create seller dimension with economic data using fuzzy matching"""
+        print("Creating seller dimension with fuzzy city matching...")
         
         conn = self.connect_db()
         if not conn:
@@ -409,23 +522,64 @@ class OlistDataWarehouse:
                 'SC': 'South', 'SP': 'Southeast', 'SE': 'Northeast', 'TO': 'North'
             }
             
-            # Prepare cities data
-            cities_clean = self.cities_df.copy()
-            cities_clean['CITY'] = cities_clean['CITY'].str.lower().str.strip()
-            cities_clean['STATE'] = cities_clean['STATE'].str.upper().str.strip()
+            # Prepare cities data with normalized names for fuzzy matching
+            print("  Preparing cities data for fuzzy matching...")
+            cities_by_state = {}
             
-            cities_dict = {}
-            for _, row in cities_clean.iterrows():
-                key = f"{row['CITY']}_{row['STATE']}"
-                cities_dict[key] = row
+            for _, row in self.cities_df.iterrows():
+                state = str(row['STATE']).upper().strip()
+                if state not in cities_by_state:
+                    cities_by_state[state] = []
+                
+                city_data = {
+                    'original_name': row['CITY'],
+                    'normalized_name': self.normalize_city_name(row['CITY']),
+                    'state': state,
+                    'population': row.get('IBGE_POP', 0) if pd.notna(row.get('IBGE_POP', 0)) else 0,
+                    'gdp_capita': row.get('GDP_CAPITA', 0) if pd.notna(row.get('GDP_CAPITA', 0)) else 0,
+                    'hdi': row.get('IDHM', 0) if pd.notna(row.get('IDHM', 0)) else 0,
+                    'hdi_income': row.get('IDHM_Renda', 0) if pd.notna(row.get('IDHM_Renda', 0)) else 0,
+                    'hdi_education': row.get('IDHM_Educacao', 0) if pd.notna(row.get('IDHM_Educacao', 0)) else 0,
+                    'hdi_longevity': row.get('IDHM_Longevidade', 0) if pd.notna(row.get('IDHM_Longevidade', 0)) else 0,
+                    'is_capital': 1 if row.get('CAPITAL', 0) == 1 else 0,
+                    'category': str(row.get('CATEGORIA_TUR', 'None')) if pd.notna(row.get('CATEGORIA_TUR')) else 'None'
+                }
+                cities_by_state[state].append(city_data)
+            
+            print(f"  Loaded {len(self.cities_df)} cities from {len(cities_by_state)} states")
+            
+            # Track matching statistics
+            exact_matches = 0
+            fuzzy_matches = 0
+            no_matches = 0
+            
+            # Process sellers
+            total_sellers = len(self.sellers_df)
+            processed = 0
             
             for _, seller in self.sellers_df.iterrows():
-                seller_city = str(seller['seller_city']).lower().strip()
+                seller_city = str(seller['seller_city']).strip()
                 seller_state = str(seller['seller_state']).upper().strip()
                 
-                city_key = f"{seller_city}_{seller_state}"
-                city_data = cities_dict.get(city_key, {})
+                # Find best matching city using fuzzy logic
+                city_data = self.fuzzy_match_city(seller_city, seller_state, cities_by_state)
                 
+                if city_data:
+                    # Check if it was an exact match
+                    normalized_seller = self.normalize_city_name(seller_city)
+                    if normalized_seller == city_data['normalized_name']:
+                        exact_matches += 1
+                    else:
+                        fuzzy_matches += 1
+                        # Log fuzzy matches for debugging
+                        if processed < 10:  # Log first 10 fuzzy matches
+                            print(f"    Fuzzy match: '{seller_city}' -> '{city_data['original_name']}'")
+                else:
+                    no_matches += 1
+                    if processed < 5:  # Log first 5 non-matches
+                        print(f"    No match found for: '{seller_city}', {seller_state}")
+                
+                # Assign region
                 region = region_map.get(seller_state, 'Unknown')
                 
                 insert_sql = """
@@ -442,24 +596,35 @@ class OlistDataWarehouse:
                     seller['seller_city'],
                     seller['seller_state'],
                     region,
-                    city_data.get('IBGE_POP', 0),
-                    city_data.get('GDP_CAPITA', 0),
-                    city_data.get('IDHM', 0),
-                    city_data.get('IDHM_Renda', 0),
-                    city_data.get('IDHM_Educacao', 0),
-                    city_data.get('IDHM_Longevidade', 0),
-                    1 if city_data.get('CAPITAL', 0) == 1 else 0,
-                    city_data.get('CATEGORIA_TUR', 'None')
+                    city_data.get('population', 0),
+                    city_data.get('gdp_capita', 0),
+                    city_data.get('hdi', 0),
+                    city_data.get('hdi_income', 0),
+                    city_data.get('hdi_education', 0),
+                    city_data.get('hdi_longevity', 0),
+                    city_data.get('is_capital', 0),
+                    city_data.get('category', 'None')
                 ))
-            
+                
+                processed += 1
+                if processed % 1000 == 0:
+                    print(f"    Processed {processed}/{total_sellers} sellers...")
             conn.commit()
-            print(f"  Seller dimension created: {len(self.sellers_df)} records")
-            return True
             
+            # Print matching statistics
+            print(f"  Seller dimension created: {total_sellers} records")
+            print(f"  Matching statistics:")
+            print(f"    Exact matches: {exact_matches} ({exact_matches/total_sellers*100:.1f}%)")
+            print(f"    Fuzzy matches: {fuzzy_matches} ({fuzzy_matches/total_sellers*100:.1f}%)")
+            print(f"    No matches: {no_matches} ({no_matches/total_sellers*100:.1f}%)")
+            print(f"    Total matched: {exact_matches + fuzzy_matches} ({(exact_matches + fuzzy_matches)/total_sellers*100:.1f}%)")
+            
+            return True
+                
         except Exception as e:
-            print(f"  Error creating seller dimension: {e}")
-            conn.rollback()
-            return False
+                print(f"  Error creating seller dimension: {e}")
+                conn.rollback()
+                return False
         finally:
             conn.close()
     
@@ -550,42 +715,62 @@ class OlistDataWarehouse:
         try:
             # Unique scores
             unique_scores = [1, 2, 3, 4, 5]
-            
-            for score in unique_scores:
-                # Categorize scores
+            # Prepare comment length categories
+            def comment_length_category(text):
+                if pd.isna(text) or not text or str(text).strip() == '':
+                    return 'No Comment'
+                length = len(str(text))
+                if length < 30:
+                    return 'Short (<30)'
+                elif length < 50:
+                    return 'Medium (30-49)'
+                elif length < 100:
+                    return 'Long (50-99)'
+                elif length < 200:
+                    return 'Very Long (100-199)'
+                else:
+                    return 'Extremely Long (200+)'
+            # Get unique (score, comment length category) pairs
+            review_pairs = set()
+            for _, row in self.reviews_df.iterrows():
+                score = row.get('review_score', 0)
+                comment = row.get('review_comment_message', '')
+                cat = comment_length_category(comment)
+                review_pairs.add((score, cat))
+            # Insert each unique pair
+            for score, cat in review_pairs:
                 if score <= 2:
                     review_category = 'Negative'
                     satisfaction_level = 'Unsatisfied'
                 elif score == 3:
                     review_category = 'Neutral'
                     satisfaction_level = 'Neutral'
-                else:
+                elif score >= 4:
                     review_category = 'Positive'
                     satisfaction_level = 'Satisfied'
-                
+                else:
+                    review_category = 'No review'
+                    satisfaction_level = 'Unknown'
+                has_comment = 0 if cat == 'No Comment' else 1
                 insert_sql = """
                 INSERT INTO DIM_Review 
-                (Review_Score, Review_Category, Satisfaction_Level, Has_Comment)
-                VALUES (?, ?, ?, ?)
+                (Review_Score, Review_Category, Satisfaction_Level, Has_Comment, Comment_Length_Category)
+                VALUES (?, ?, ?, ?, ?)
                 """
-                
                 cursor.execute(insert_sql, (
                     score,
                     review_category,
                     satisfaction_level,
-                    0  # Simplification - can be extended with comment analysis
+                    has_comment,
+                    cat
                 ))
-            
-            # Add record for no review
-            cursor.execute(insert_sql, (
-                0,
-                'No review',
-                'Unknown',
-                0
-            ))
-            
+            # Add record for no review at all
+            cursor.execute(
+                insert_sql,
+                (0, 'No review', 'Unknown', 0, 'No Comment')
+            )
             conn.commit()
-            print("  Review dimension created: 6 records")
+            print(f"  Review dimension created: {len(review_pairs)+1} records")
             return True
             
         except Exception as e:
