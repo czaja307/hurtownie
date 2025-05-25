@@ -1,67 +1,66 @@
 """
-INSTRUKCJA URUCHOMIENIA HURTOWNI DANYCH OLIST
-=============================================
+INSTRUCTION FOR RUNNING THE OLIST DATA WAREHOUSE
+================================================
 
-KROK 1: Przygotowanie środowiska
----------------------------------
-1. Upewnij się, że masz zainstalowane biblioteki Python:
+STEP 1: Environment Setup
+-------------------------
+1. Make sure you have the required Python libraries installed:
    pip install pandas numpy pyodbc
 
-2. Sprawdź połączenie z SQL Server (192.168.1.204)
-   - Użytkownik: sa
-   - Hasło: password
-   - Baza danych zostanie utworzona automatycznie: OlistDW
+2. Check the SQL Server connection (192.168.1.204)
+   - User: sa
+   - Password: password
+   - The database will be created automatically: Olist
 
-KROK 2: Uruchomienie procesu ETL
----------------------------------
+STEP 2: ETL Process Execution
+-----------------------------
 python create_data_warehouse.py
 
-Ten skrypt wykona następujące operacje:
-✓ Wczyta dane z plików CSV (data/olist/ i data/cities/)
-✓ Utworzy schemat hurtowni danych (tabele wymiarów i faktów)
-✓ Wypełni wymiary danymi z transformacją i wzbogaceniem
-✓ Utworzy tabelę faktów z >10,000 rekordów
-✓ Wygeneruje widoki z miarami kalkulowanymi
-✓ Zapisze przykładowe zapytania OLAP
+This script will perform the following operations:
+- Load data from CSV files (data/olist/ and data/cities/)
+- Create the data warehouse schema (dimension and fact tables)
+- Populate the dimensions with transformation and enrichment
+- Create the fact table with >10,000 records
+- Generate views with calculated measures
+- Save sample OLAP queries
 
-KROK 3: Dodatkowe analizy
--------------------------
+STEP 3: Additional Analyses
+---------------------------
 python olap_cube_definition.py
 
-Wygeneruje zaawansowane zapytania analityczne.
+Generates advanced analytical queries.
 
-STRUKTURA HURTOWNI:
-==================
+DATA WAREHOUSE STRUCTURE:
+=========================
+DIMENSIONS (5):
+- DIM_Time (hierarchical: Year → Quarter → Month → Day)
+- DIM_Customer (hierarchical: Region → State → City → Customer + economic data)
+- DIM_Seller (hierarchical: Region → State → City → Seller + economic data)
+- DIM_Payment (payment types, installments, categories)
+- DIM_Review (scores, satisfaction)
 
-WYMIARY (5):
-- DIM_Time (hierarchiczny: Rok → Kwartał → Miesiąc → Dzień)
-- DIM_Customer (hierarchiczny: Region → Stan → Miasto → Klient + dane ekonomiczne)
-- DIM_Seller (hierarchiczny: Region → Stan → Miasto → Sprzedawca + dane ekonomiczne)  
-- DIM_Payment (typy płatności, raty, kategorie)
-- DIM_Review (oceny, satysfakcja)
+FACTS:
+- FACT_Orders (orders with measures)
 
-FAKTY:
-- FACT_Orders (zamówienia z miarami)
+MEASURES:
+- Additive: Order_Value, Freight_Value, Items_Count
+- Non-additive: Delivery_Days (average), Review_Score (average)
+- Calculated: Total_Revenue, Revenue_Per_Customer, Freight_Percentage
 
-MIARY:
-- Addytywne: Order_Value, Freight_Value, Items_Count
-- Nieaddytywne: Delivery_Days (średnia), Review_Score (średnia)
-- Kalkulowane: Total_Revenue, Revenue_Per_Customer, Freight_Percentage
+OUTPUT FILES:
+============ =
+- sample_olap_queries.sql - basic OLAP queries
+- advanced_olap_analysis.sql - advanced multidimensional analyses
 
-PLIKI WYJŚCIOWE:
-===============
-- sample_olap_queries.sql - podstawowe zapytania OLAP
-- advanced_olap_analysis.sql - zaawansowane analizy wielowymiarowe
-
-PRZYKŁADOWE ANALIZY:
-===================
-1. Sprzedaż w czasie (roll-up/drill-down)
-2. Analiza geograficzna z PKB i HDI miast
-3. Segmentacja klientów RFM
-4. Korelacje ekonomiczne
-5. Analizy sezonowości
-6. Efektywność dostaw vs satysfakcja
-7. Trendy rok-do-roku
+EXAMPLE ANALYSES:
+=================
+1. Sales over time (roll-up/drill-down)
+2. Geographic analysis with city GDP and HDI
+3. Customer segmentation (RFM)
+4. Economic correlations
+5. Seasonality analyses
+6. Delivery efficiency vs satisfaction
+7. Year-over-year trends
 8. Cross-dimensional analysis
 """
 
@@ -71,21 +70,21 @@ import os
 
 def install_requirements():
     """Instalacja wymaganych bibliotek"""
-    print("📦 Instalowanie wymaganych bibliotek...")
+    print("Installing required Python packages...")
     
     packages = ['pandas', 'numpy', 'pyodbc']
     
     for package in packages:
         try:
             __import__(package)
-            print(f"  ✓ {package} już zainstalowany")
+            print(f"  {package} is already installed")
         except ImportError:
-            print(f"  📥 Instalowanie {package}...")
+            print(f"  Installing {package}...")
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
 
 def check_data_files():
     """Sprawdzenie dostępności plików danych"""
-    print("📁 Sprawdzanie plików danych...")
+    print("Checking data files...")
     
     data_path = r'c:\Users\Kuba\PycharmProjects\hurtownie\data'
     
@@ -104,26 +103,26 @@ def check_data_files():
     for file_path in required_files:
         full_path = os.path.join(data_path, file_path)
         if os.path.exists(full_path):
-            print(f"  ✓ {file_path}")
+            print(f"  Found: {file_path}")
         else:
-            print(f"  ✗ {file_path} - BRAK PLIKU")
+            print(f"  Missing: {file_path}")
             missing_files.append(file_path)
     
     if missing_files:
         print(f"\n❌ Brakuje {len(missing_files)} plików danych!")
         return False
     
-    print("  ✓ Wszystkie pliki danych dostępne")
+    print("  All data files are available")
     return True
 
 def run_etl_pipeline():
     """Uruchomienie pełnego pipeline ETL"""
-    print("🚀 URUCHAMIANIE PIPELINE HURTOWNI DANYCH OLIST")
+    print("Starting Olist data warehouse ETL pipeline")
     print("=" * 60)
     
     # Krok 1: Sprawdzenie wymagań
     if not check_data_files():
-        print("❌ Zatrzymano - brakuje plików danych")
+        print("Stopped - missing data files")
         return False
     
     # Krok 2: Instalacja bibliotek
@@ -135,32 +134,32 @@ def run_etl_pipeline():
     
     # Krok 3: Import i uruchomienie ETL
     try:
-        print("\n🔧 Uruchamianie głównego procesu ETL...")
+        print("\nRunning main ETL process...")
         from create_data_warehouse import OlistDataWarehouse
         
         dw = OlistDataWarehouse()
         success = dw.run_etl_process()
         
         if success:
-            print("\n🎯 Generowanie dodatkowych analiz...")
+            print("\nGenerating additional analyses...")
             from olap_cube_definition import save_advanced_queries
             save_advanced_queries()
             
             print("\n" + "=" * 60)
-            print("🎉 PIPELINE ZAKOŃCZONY POMYŚLNIE!")
-            print("\n📊 NASTĘPNE KROKI:")
-            print("   1. Połącz się z bazą OlistDW na SQL Server")
-            print("   2. Uruchom zapytania z sample_olap_queries.sql")  
-            print("   3. Eksploruj zaawansowane analizy z advanced_olap_analysis.sql")
-            print("   4. Utwórz raporty w Power BI/Tableau")
+            print("Pipeline completed successfully!")
+            print("\nNext steps:")
+            print("   1. Connect to the OlistDW database on SQL Server")
+            print("   2. Run the queries in sample_olap_queries.sql")  
+            print("   3. Explore advanced analyses in advanced_olap_analysis.sql")
+            print("   4. Create reports in Power BI/Tableau")
             
             return True
         else:
-            print("❌ ETL zakończony błędem")
+            print("ETL finished with errors")
             return False
             
     except Exception as e:
-        print(f"❌ Błąd podczas ETL: {e}")
+        print(f"Error during ETL: {e}")
         return False
 
 if __name__ == "__main__":
