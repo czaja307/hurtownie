@@ -1,6 +1,6 @@
 import pyodbc
 
-server = '192.168.0.118'
+server = '192.168.1.204'
 database = 'Olist'
 driver = 'SQL Server Native Client 11.0'
 username = 'sa'
