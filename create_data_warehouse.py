@@ -1,23 +1,23 @@
 """
-Skrypt tworzenia hurtowni danych dla systemu e-commerce Olist
-Kostka OLAP z 5 wymiarami i 3 miarami + miary kalkulowane
+Script for creating a data warehouse for the Olist e-commerce system
+OLAP cube with 5 dimensions and 3 measures + calculated measures
 
-FAKT: Zamówienie (Order)
-WYMIARY:
-1. DIM_TIME (hierarchiczny: Rok -> Kwartał -> Miesiąc -> Dzień)
-2. DIM_CUSTOMER (hierarchiczny: Stan -> Miasto -> Klient + dane ekonomiczne)
-3. DIM_SELLER (hierarchiczny: Stan -> Miasto -> Sprzedawca + dane ekonomiczne)
-4. DIM_PAYMENT (Typ płatności, raty, kategorie)
-5. DIM_REVIEW (Ocena, kategorie satysfakcji)
+FACT: Order
+DIMENSIONS:
+1. DIM_TIME (hierarchical: Year -> Quarter -> Month -> Day)
+2. DIM_CUSTOMER (hierarchical: State -> City -> Customer + economic data)
+3. DIM_SELLER (hierarchical: State -> City -> Seller + economic data)
+4. DIM_PAYMENT (Payment type, installments, categories)
+5. DIM_REVIEW (Rating, satisfaction categories)
 
-MIARY:
-- Order_Value (addytywna)
-- Freight_Value (addytywna)
-- Delivery_Days (nieaddytywna - średnia)
-+ MIARY KALKULOWANE:
-- Avg_Review_Score (nieaddytywna)
-- Revenue_Per_Customer (kalkulowana)
-- Profit_Margin (kalkulowana)
+MEASURES:
+- Order_Value (additive)
+- Freight_Value (additive)
+- Delivery_Days (non-additive - average)
++ CALCULATED MEASURES:
+- Avg_Review_Score (non-additive)
+- Revenue_Per_Customer (calculated)
+- Profit_Margin (calculated)
 """
 
 import pyodbc
@@ -28,7 +28,7 @@ import os
 
 class OlistDataWarehouse:
     def __init__(self):
-        # Konfiguracja połączenia z bazą danych
+        # Database connection configuration
         self.server = '192.168.1.204'
         self.database = 'Olist'
         self.driver = 'SQL Server Native Client 11.0'
@@ -44,21 +44,21 @@ class OlistDataWarehouse:
             f'Encrypt=no;'
         )
         
-        # Ścieżki do plików danych
+        # Paths to data files
         self.data_path = r'c:\\Users\\Kuba\\PycharmProjects\\hurtownie\\data'
         
     def connect_db(self):
-        """Nawiązanie połączenia z bazą danych"""
+        """Establish connection with the database"""
         try:
             conn = pyodbc.connect(self.connection_string)
-            print("✓ Połączenie z bazą danych nawiązane")
+            print("Connection with the database established")
             return conn
         except Exception as e:
-            print(f"✗ Błąd połączenia z bazą danych: {e}")
+            print(f"Error connecting to the database: {e}")
             return None
     
     def create_database_schema(self):
-        """Tworzenie schematu bazy danych hurtowni"""
+        """Create the data warehouse database schema"""
         conn = self.connect_db()
         if not conn:
             return False
@@ -66,9 +66,9 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            print("🔧 Tworzenie schematu hurtowni danych...")
+            print("Creating data warehouse schema...")
             
-            # Usunięcie istniejących tabel (w odpowiedniej kolejności)
+            # Drop existing tables (in the correct order)
             drop_tables = [
                 "DROP TABLE IF EXISTS FACT_Orders;",
                 "DROP TABLE IF EXISTS DIM_Time;",
@@ -81,7 +81,7 @@ class OlistDataWarehouse:
             for drop_sql in drop_tables:
                 cursor.execute(drop_sql)
             
-            # 1. WYMIAR CZASU (hierarchiczny: Rok -> Kwartał -> Miesiąc -> Dzień)
+            # 1. TIME DIMENSION (hierarchical: Year -> Quarter -> Month -> Day)
             dim_time_sql = """
             CREATE TABLE DIM_Time (
                 Time_Key INT IDENTITY(1,1) PRIMARY KEY,
@@ -100,7 +100,7 @@ class OlistDataWarehouse:
             );
             """
             
-            # 2. WYMIAR KLIENTA (hierarchiczny: Stan -> Miasto -> Klient + dane ekonomiczne)
+            # 2. CUSTOMER DIMENSION (hierarchical: State -> City -> Customer + economic data)
             dim_customer_sql = """
             CREATE TABLE DIM_Customer (
                 Customer_Key INT IDENTITY(1,1) PRIMARY KEY,
@@ -110,7 +110,7 @@ class OlistDataWarehouse:
                 Customer_City NVARCHAR(100),
                 Customer_State NVARCHAR(5),
                 Customer_Region NVARCHAR(50),
-                -- Dane ekonomiczne z cities dataset
+                -- Economic data from cities dataset
                 City_Population INT,
                 City_GDP_Per_Capita DECIMAL(15,2),
                 City_HDI DECIMAL(5,4),
@@ -122,7 +122,7 @@ class OlistDataWarehouse:
             );
             """
             
-            # 3. WYMIAR SPRZEDAWCY (hierarchiczny: Stan -> Miasto -> Sprzedawca + dane ekonomiczne)
+            # 3. SELLER DIMENSION (hierarchical: State -> City -> Seller + economic data)
             dim_seller_sql = """
             CREATE TABLE DIM_Seller (
                 Seller_Key INT IDENTITY(1,1) PRIMARY KEY,
@@ -131,7 +131,7 @@ class OlistDataWarehouse:
                 Seller_City NVARCHAR(100),
                 Seller_State NVARCHAR(5),
                 Seller_Region NVARCHAR(50),
-                -- Dane ekonomiczne z cities dataset
+                -- Economic data from cities dataset
                 City_Population INT,
                 City_GDP_Per_Capita DECIMAL(15,2),
                 City_HDI DECIMAL(5,4),
@@ -143,7 +143,7 @@ class OlistDataWarehouse:
             );
             """
             
-            # 4. WYMIAR PŁATNOŚCI
+            # 4. PAYMENT DIMENSION
             dim_payment_sql = """
             CREATE TABLE DIM_Payment (
                 Payment_Key INT IDENTITY(1,1) PRIMARY KEY,
@@ -155,7 +155,7 @@ class OlistDataWarehouse:
             );
             """
             
-            # 5. WYMIAR RECENZJI
+            # 5. REVIEW DIMENSION
             dim_review_sql = """
             CREATE TABLE DIM_Review (
                 Review_Key INT IDENTITY(1,1) PRIMARY KEY,
@@ -166,7 +166,7 @@ class OlistDataWarehouse:
             );
             """
             
-            # TABELA FAKTÓW
+            # FACT TABLE
             fact_orders_sql = """
             CREATE TABLE FACT_Orders (
                 Order_Key INT IDENTITY(1,1) PRIMARY KEY,
@@ -177,16 +177,16 @@ class OlistDataWarehouse:
                 Payment_Key INT,
                 Review_Key INT,
                 
-                -- MIARY ADDYTYWNE
+                -- ADDITIVE MEASURES
                 Order_Value DECIMAL(15,2),
                 Freight_Value DECIMAL(15,2),
                 Items_Count INT,
                 
-                -- MIARY NIEADDYTYWNE
+                -- NON-ADDITIVE MEASURES
                 Delivery_Days INT,
                 Review_Score INT,
                 
-                -- DANE DO MIAR KALKULOWANYCH
+                -- DATA FOR CALCULATED MEASURES
                 Purchase_Date DATE,
                 Delivery_Date DATE,
                 Estimated_Delivery_Date DATE,
@@ -199,7 +199,7 @@ class OlistDataWarehouse:
             );
             """
             
-            # Wykonanie zapytań tworzących tabele
+            # Execute table creation queries
             tables = [
                 ("DIM_Time", dim_time_sql),
                 ("DIM_Customer", dim_customer_sql),
@@ -210,26 +210,26 @@ class OlistDataWarehouse:
             ]
             
             for table_name, sql in tables:
-                print(f"  📊 Tworzenie tabeli {table_name}...")
+                print(f"  Creating table {table_name}...")
                 cursor.execute(sql)
             
             conn.commit()
-            print("✓ Schema hurtowni danych utworzona pomyślnie")
+            print("Data warehouse schema created successfully")
             return True
             
         except Exception as e:
-            print(f"✗ Błąd tworzenia schematu: {e}")
+            print(f"Error creating schema: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def load_data_files(self):
-        """Wczytanie danych z plików CSV"""
-        print("📁 Wczytywanie danych z plików...")
+        """Load data from CSV files"""
+        print("Loading data from files...")
         
         try:
-            # Wczytanie danych Olist
+            # Load Olist data
             self.orders_df = pd.read_csv(os.path.join(self.data_path, 'olist', 'olist_orders_dataset.csv'))
             self.order_items_df = pd.read_csv(os.path.join(self.data_path, 'olist', 'olist_order_items_dataset.csv'))
             self.customers_df = pd.read_csv(os.path.join(self.data_path, 'olist', 'olist_customers_dataset.csv'))
@@ -237,26 +237,26 @@ class OlistDataWarehouse:
             self.payments_df = pd.read_csv(os.path.join(self.data_path, 'olist', 'olist_order_payments_dataset.csv'))
             self.reviews_df = pd.read_csv(os.path.join(self.data_path, 'olist', 'olist_order_reviews_dataset.csv'))
             
-            # Wczytanie danych miast brazylijskich
+            # Load Brazilian cities data
             self.cities_df = pd.read_csv(os.path.join(self.data_path, 'cities', 'BRAZIL_CITIES_REV2022.CSV'))
             
-            print(f"  ✓ Zamówienia: {len(self.orders_df)} rekordów")
-            print(f"  ✓ Pozycje zamówień: {len(self.order_items_df)} rekordów")
-            print(f"  ✓ Klienci: {len(self.customers_df)} rekordów")
-            print(f"  ✓ Sprzedawcy: {len(self.sellers_df)} rekordów")
-            print(f"  ✓ Płatności: {len(self.payments_df)} rekordów")
-            print(f"  ✓ Recenzje: {len(self.reviews_df)} rekordów")
-            print(f"  ✓ Miasta: {len(self.cities_df)} rekordów")
+            print(f"  Orders: {len(self.orders_df)} records")
+            print(f"  Order items: {len(self.order_items_df)} records")
+            print(f"  Customers: {len(self.customers_df)} records")
+            print(f"  Sellers: {len(self.sellers_df)} records")
+            print(f"  Payments: {len(self.payments_df)} records")
+            print(f"  Reviews: {len(self.reviews_df)} records")
+            print(f"  Cities: {len(self.cities_df)} records")
             
             return True
             
         except Exception as e:
-            print(f"✗ Błąd wczytywania danych: {e}")
+            print(f"Error loading data: {e}")
             return False
     
     def create_time_dimension(self):
-        """Tworzenie wymiaru czasu"""
-        print("📅 Tworzenie wymiaru czasu...")
+        """Create time dimension"""
+        print("Creating time dimension...")
         
         conn = self.connect_db()
         if not conn:
@@ -265,7 +265,7 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            # Generowanie dat od początku 2016 do końca 2019
+            # Generate dates from the beginning of 2016 to the end of 2019
             start_date = datetime(2016, 1, 1)
             end_date = datetime(2019, 12, 31)
             
@@ -281,7 +281,7 @@ class OlistDataWarehouse:
                 quarter_name = f"Q{quarter_number}"
                 year_number = current_date.year
                 is_weekend = 1 if current_date.weekday() >= 5 else 0
-                is_holiday = 0  # Uproszczenie - można rozszerzyć o święta brazylijskie
+                is_holiday = 0  # Simplification - can be extended with Brazilian holidays
                 date_string = current_date.strftime('%Y-%m-%d')
                 
                 insert_sql = """
@@ -299,19 +299,19 @@ class OlistDataWarehouse:
                 current_date += timedelta(days=1)
             
             conn.commit()
-            print("  ✓ Wymiar czasu utworzony pomyślnie")
+            print("  Time dimension created successfully")
             return True
             
         except Exception as e:
-            print(f"  ✗ Błąd tworzenia wymiaru czasu: {e}")
+            print(f"  Error creating time dimension: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def create_customer_dimension(self):
-        """Tworzenie wymiaru klienta z danymi ekonomicznymi"""
-        print("👥 Tworzenie wymiaru klienta...")
+        """Create customer dimension with economic data"""
+        print("Creating customer dimension...")
         
         conn = self.connect_db()
         if not conn:
@@ -320,22 +320,22 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            # Mapa regionów Brazylii
+            # Brazil regions map
             region_map = {
-                'AC': 'Norte', 'AL': 'Nordeste', 'AP': 'Norte', 'AM': 'Norte', 'BA': 'Nordeste',
-                'CE': 'Nordeste', 'DF': 'Centro-Oeste', 'ES': 'Sudeste', 'GO': 'Centro-Oeste',
-                'MA': 'Nordeste', 'MT': 'Centro-Oeste', 'MS': 'Centro-Oeste', 'MG': 'Sudeste',
-                'PA': 'Norte', 'PB': 'Nordeste', 'PR': 'Sul', 'PE': 'Nordeste', 'PI': 'Nordeste',
-                'RJ': 'Sudeste', 'RN': 'Nordeste', 'RS': 'Sul', 'RO': 'Norte', 'RR': 'Norte',
-                'SC': 'Sul', 'SP': 'Sudeste', 'SE': 'Nordeste', 'TO': 'Norte'
+                'AC': 'North', 'AL': 'Northeast', 'AP': 'North', 'AM': 'North', 'BA': 'Northeast',
+                'CE': 'Northeast', 'DF': 'Central-West', 'ES': 'Southeast', 'GO': 'Central-West',
+                'MA': 'Northeast', 'MT': 'Central-West', 'MS': 'Central-West', 'MG': 'Southeast',
+                'PA': 'North', 'PB': 'Northeast', 'PR': 'South', 'PE': 'Northeast', 'PI': 'Northeast',
+                'RJ': 'Southeast', 'RN': 'Northeast', 'RS': 'South', 'RO': 'North', 'RR': 'North',
+                'SC': 'South', 'SP': 'Southeast', 'SE': 'Northeast', 'TO': 'North'
             }
             
-            # Przygotowanie danych miast (normalizacja nazw)
+            # Prepare cities data (normalize names)
             cities_clean = self.cities_df.copy()
             cities_clean['CITY'] = cities_clean['CITY'].str.lower().str.strip()
             cities_clean['STATE'] = cities_clean['STATE'].str.upper().str.strip()
             
-            # Słownik miast dla szybkiego wyszukiwania
+            # Cities dictionary for quick lookup
             cities_dict = {}
             for _, row in cities_clean.iterrows():
                 key = f"{row['CITY']}_{row['STATE']}"
@@ -345,12 +345,12 @@ class OlistDataWarehouse:
                 customer_city = str(customer['customer_city']).lower().strip()
                 customer_state = str(customer['customer_state']).upper().strip()
                 
-                # Wyszukanie danych miasta
+                # Lookup city data
                 city_key = f"{customer_city}_{customer_state}"
                 city_data = cities_dict.get(city_key, {})
                 
-                # Przypisanie regionu
-                region = region_map.get(customer_state, 'Nieznany')
+                # Assign region
+                region = region_map.get(customer_state, 'Unknown')
                 
                 insert_sql = """
                 INSERT INTO DIM_Customer 
@@ -374,23 +374,23 @@ class OlistDataWarehouse:
                     city_data.get('IDHM_Educacao', 0),
                     city_data.get('IDHM_Longevidade', 0),
                     1 if city_data.get('CAPITAL', 0) == 1 else 0,
-                    city_data.get('CATEGORIA_TUR', 'Brak')
+                    city_data.get('CATEGORIA_TUR', 'None')
                 ))
             
             conn.commit()
-            print(f"  ✓ Wymiar klienta utworzony: {len(self.customers_df)} rekordów")
+            print(f"  Customer dimension created: {len(self.customers_df)} records")
             return True
             
         except Exception as e:
-            print(f"  ✗ Błąd tworzenia wymiaru klienta: {e}")
+            print(f"  Error creating customer dimension: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def create_seller_dimension(self):
-        """Tworzenie wymiaru sprzedawcy z danymi ekonomicznymi"""
-        print("🏪 Tworzenie wymiaru sprzedawcy...")
+        """Create seller dimension with economic data"""
+        print("Creating seller dimension...")
         
         conn = self.connect_db()
         if not conn:
@@ -399,17 +399,17 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            # Mapa regionów Brazylii
+            # Brazil regions map
             region_map = {
-                'AC': 'Norte', 'AL': 'Nordeste', 'AP': 'Norte', 'AM': 'Norte', 'BA': 'Nordeste',
-                'CE': 'Nordeste', 'DF': 'Centro-Oeste', 'ES': 'Sudeste', 'GO': 'Centro-Oeste',
-                'MA': 'Nordeste', 'MT': 'Centro-Oeste', 'MS': 'Centro-Oeste', 'MG': 'Sudeste',
-                'PA': 'Norte', 'PB': 'Nordeste', 'PR': 'Sul', 'PE': 'Nordeste', 'PI': 'Nordeste',
-                'RJ': 'Sudeste', 'RN': 'Nordeste', 'RS': 'Sul', 'RO': 'Norte', 'RR': 'Norte',
-                'SC': 'Sul', 'SP': 'Sudeste', 'SE': 'Nordeste', 'TO': 'Norte'
+                'AC': 'North', 'AL': 'Northeast', 'AP': 'North', 'AM': 'North', 'BA': 'Northeast',
+                'CE': 'Northeast', 'DF': 'Central-West', 'ES': 'Southeast', 'GO': 'Central-West',
+                'MA': 'Northeast', 'MT': 'Central-West', 'MS': 'Central-West', 'MG': 'Southeast',
+                'PA': 'North', 'PB': 'Northeast', 'PR': 'South', 'PE': 'Northeast', 'PI': 'Northeast',
+                'RJ': 'Southeast', 'RN': 'Northeast', 'RS': 'South', 'RO': 'North', 'RR': 'North',
+                'SC': 'South', 'SP': 'Southeast', 'SE': 'Northeast', 'TO': 'North'
             }
             
-            # Przygotowanie danych miast
+            # Prepare cities data
             cities_clean = self.cities_df.copy()
             cities_clean['CITY'] = cities_clean['CITY'].str.lower().str.strip()
             cities_clean['STATE'] = cities_clean['STATE'].str.upper().str.strip()
@@ -426,7 +426,7 @@ class OlistDataWarehouse:
                 city_key = f"{seller_city}_{seller_state}"
                 city_data = cities_dict.get(city_key, {})
                 
-                region = region_map.get(seller_state, 'Nieznany')
+                region = region_map.get(seller_state, 'Unknown')
                 
                 insert_sql = """
                 INSERT INTO DIM_Seller 
@@ -449,23 +449,23 @@ class OlistDataWarehouse:
                     city_data.get('IDHM_Educacao', 0),
                     city_data.get('IDHM_Longevidade', 0),
                     1 if city_data.get('CAPITAL', 0) == 1 else 0,
-                    city_data.get('CATEGORIA_TUR', 'Brak')
+                    city_data.get('CATEGORIA_TUR', 'None')
                 ))
             
             conn.commit()
-            print(f"  ✓ Wymiar sprzedawcy utworzony: {len(self.sellers_df)} rekordów")
+            print(f"  Seller dimension created: {len(self.sellers_df)} records")
             return True
             
         except Exception as e:
-            print(f"  ✗ Błąd tworzenia wymiaru sprzedawcy: {e}")
+            print(f"  Error creating seller dimension: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def create_payment_dimension(self):
-        """Tworzenie wymiaru płatności"""
-        print("💳 Tworzenie wymiaru płatności...")
+        """Create payment dimension"""
+        print("Creating payment dimension...")
         
         conn = self.connect_db()
         if not conn:
@@ -474,41 +474,41 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            # Unikalne typy płatności
+            # Unique payment types
             unique_payments = self.payments_df[['payment_type', 'payment_installments']].drop_duplicates()
             
             for _, payment in unique_payments.iterrows():
                 payment_type = payment['payment_type']
                 installments = payment['payment_installments']
                 
-                # Kategoryzacja typu płatności
+                # Categorize payment type
                 if payment_type == 'credit_card':
-                    payment_category = 'Karta kredytowa'
+                    payment_category = 'Credit Card'
                     is_credit = 1
                 elif payment_type == 'boleto':
-                    payment_category = 'Boleto bancário'
+                    payment_category = 'Boleto'
                     is_credit = 0
                 elif payment_type == 'voucher':
                     payment_category = 'Voucher'
                     is_credit = 0
                 elif payment_type == 'debit_card':
-                    payment_category = 'Karta debetowa'
+                    payment_category = 'Debit Card'
                     is_credit = 0
                 else:
-                    payment_category = 'Inne'
+                    payment_category = 'Other'
                     is_credit = 0
                 
-                # Kategoryzacja rat
+                # Categorize installments
                 if installments == 1:
-                    installments_range = '1 rata'
+                    installments_range = '1 installment'
                 elif installments <= 3:
-                    installments_range = '2-3 raty'
+                    installments_range = '2-3 installments'
                 elif installments <= 6:
-                    installments_range = '4-6 rat'
+                    installments_range = '4-6 installments'
                 elif installments <= 12:
-                    installments_range = '7-12 rat'
+                    installments_range = '7-12 installments'
                 else:
-                    installments_range = '13+ rat'
+                    installments_range = '13+ installments'
                 
                 is_installment = 1 if installments > 1 else 0
                 
@@ -527,19 +527,19 @@ class OlistDataWarehouse:
                 ))
             
             conn.commit()
-            print(f"  ✓ Wymiar płatności utworzony: {len(unique_payments)} rekordów")
+            print(f"  Payment dimension created: {len(unique_payments)} records")
             return True
             
         except Exception as e:
-            print(f"  ✗ Błąd tworzenia wymiaru płatności: {e}")
+            print(f"  Error creating payment dimension: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def create_review_dimension(self):
-        """Tworzenie wymiaru recenzji"""
-        print("⭐ Tworzenie wymiaru recenzji...")
+        """Create review dimension"""
+        print("Creating review dimension...")
         
         conn = self.connect_db()
         if not conn:
@@ -548,20 +548,20 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            # Unikalne oceny
+            # Unique scores
             unique_scores = [1, 2, 3, 4, 5]
             
             for score in unique_scores:
-                # Kategoryzacja ocen
+                # Categorize scores
                 if score <= 2:
-                    review_category = 'Negatywna'
-                    satisfaction_level = 'Niezadowolony'
+                    review_category = 'Negative'
+                    satisfaction_level = 'Unsatisfied'
                 elif score == 3:
-                    review_category = 'Neutralna'
-                    satisfaction_level = 'Neutralny'
+                    review_category = 'Neutral'
+                    satisfaction_level = 'Neutral'
                 else:
-                    review_category = 'Pozytywna'
-                    satisfaction_level = 'Zadowolony'
+                    review_category = 'Positive'
+                    satisfaction_level = 'Satisfied'
                 
                 insert_sql = """
                 INSERT INTO DIM_Review 
@@ -573,31 +573,31 @@ class OlistDataWarehouse:
                     score,
                     review_category,
                     satisfaction_level,
-                    0  # Uproszczenie - można rozszerzyć o analizę komentarzy
+                    0  # Simplification - can be extended with comment analysis
                 ))
             
-            # Dodanie rekordu dla brak recenzji
+            # Add record for no review
             cursor.execute(insert_sql, (
                 0,
-                'Brak recenzji',
-                'Nieznany',
+                'No review',
+                'Unknown',
                 0
             ))
             
             conn.commit()
-            print("  ✓ Wymiar recenzji utworzony: 6 rekordów")
+            print("  Review dimension created: 6 records")
             return True
             
         except Exception as e:
-            print(f"  ✗ Błąd tworzenia wymiaru recenzji: {e}")
+            print(f"  Error creating review dimension: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def create_fact_table(self):
-        """Tworzenie tabeli faktów"""
-        print("📊 Tworzenie tabeli faktów...")
+        """Create fact table"""
+        print("Creating fact table...")
         
         conn = self.connect_db()
         if not conn:
@@ -606,21 +606,21 @@ class OlistDataWarehouse:
         cursor = conn.cursor()
         
         try:
-            # Przygotowanie danych do tabeli faktów
-            print("  🔄 Łączenie danych z różnych źródeł...")
+            # Prepare data for fact table
+            print("  Joining data from different sources...")
             
-            # Łączenie zamówień z pozycjami
+            # Join orders with items
             fact_data = self.orders_df.merge(
                 self.order_items_df.groupby('order_id').agg({
                     'price': 'sum',
                     'freight_value': 'sum',
                     'order_item_id': 'count',
-                    'seller_id': 'first'  # Pierwszy sprzedawca w zamówieniu
+                    'seller_id': 'first'  # First seller in the order
                 }).reset_index(),
                 on='order_id', how='inner'
             )
             
-            # Łączenie z płatnościami
+            # Join with payments
             fact_data = fact_data.merge(
                 self.payments_df.groupby('order_id').agg({
                     'payment_type': 'first',
@@ -630,50 +630,50 @@ class OlistDataWarehouse:
                 on='order_id', how='left'
             )
             
-            # Łączenie z recenzjami
+            # Join with reviews
             fact_data = fact_data.merge(
                 self.reviews_df[['order_id', 'review_score']],
                 on='order_id', how='left'
             )
             
-            print(f"  📈 Przygotowanych {len(fact_data)} rekordów faktów")
+            print(f"  Prepared {len(fact_data)} fact records")
             
-            # Pobieranie kluczy wymiarów
+            # Get dimension keys
             dim_keys = {}
             
-            # Klucze czasu
+            # Time keys
             cursor.execute("SELECT Time_Key, Date_Value FROM DIM_Time")
             dim_keys['time'] = {row[1]: row[0] for row in cursor.fetchall()}
             
-            # Klucze klientów
+            # Customer keys
             cursor.execute("SELECT Customer_Key, Customer_ID FROM DIM_Customer")
             dim_keys['customer'] = {row[1]: row[0] for row in cursor.fetchall()}
             
-            # Klucze sprzedawców
+            # Seller keys
             cursor.execute("SELECT Seller_Key, Seller_ID FROM DIM_Seller")
             dim_keys['seller'] = {row[1]: row[0] for row in cursor.fetchall()}
             
-            # Klucze płatności
+            # Payment keys
             cursor.execute("SELECT Payment_Key, Payment_Type, Installments_Range FROM DIM_Payment")
             payment_keys = {}
             for row in cursor.fetchall():
                 payment_keys[f"{row[1]}_{row[2]}"] = row[0]
             
-            # Klucze recenzji
+            # Review keys
             cursor.execute("SELECT Review_Key, Review_Score FROM DIM_Review")
             dim_keys['review'] = {row[1]: row[0] for row in cursor.fetchall()}
             
-            # Wstawianie rekordów do tabeli faktów
+            # Insert records into fact table
             inserted_count = 0
             
             for _, row in fact_data.iterrows():
                 try:
-                    # Konwersja dat
+                    # Convert dates
                     purchase_date = pd.to_datetime(row['order_purchase_timestamp']).date()
                     delivery_date = pd.to_datetime(row.get('order_delivered_customer_date', None), errors='coerce')
                     estimated_delivery = pd.to_datetime(row.get('order_estimated_delivery_date', None), errors='coerce')
                     
-                    # Obliczenie dni dostawy
+                    # Calculate delivery days
                     delivery_days = None
                     if delivery_date is not None and not pd.isna(delivery_date):
                         delivery_days = (delivery_date.date() - purchase_date).days
@@ -686,29 +686,29 @@ class OlistDataWarehouse:
                     else:
                         estimated_delivery = None
                     
-                    # Wyszukiwanie kluczy wymiarów
+                    # Lookup dimension keys
                     time_key = dim_keys['time'].get(purchase_date)
                     customer_key = dim_keys['customer'].get(row['customer_id'])
                     seller_key = dim_keys['seller'].get(row.get('seller_id'))
                     
-                    # Klucz płatności
+                    # Payment key
                     payment_type = row.get('payment_type', 'unknown')
                     installments = row.get('payment_installments', 1)
                     
                     if installments == 1:
-                        installments_range = '1 rata'
+                        installments_range = '1 installment'
                     elif installments <= 3:
-                        installments_range = '2-3 raty'
+                        installments_range = '2-3 installments'
                     elif installments <= 6:
-                        installments_range = '4-6 rat'
+                        installments_range = '4-6 installments'
                     elif installments <= 12:
-                        installments_range = '7-12 rat'
+                        installments_range = '7-12 installments'
                     else:
-                        installments_range = '13+ rat'
+                        installments_range = '13+ installments'
                     
                     payment_key = payment_keys.get(f"{payment_type}_{installments_range}")
                     
-                    # Klucz recenzji
+                    # Review key
                     review_score = row.get('review_score', 0)
                     if pd.isna(review_score):
                         review_score = 0
@@ -743,62 +743,53 @@ class OlistDataWarehouse:
                         inserted_count += 1
                         
                         if inserted_count % 1000 == 0:
-                            print(f"    📝 Wstawiono {inserted_count} rekordów...")
+                            print(f"    Inserted {inserted_count} records...")
                             conn.commit()
                 
                 except Exception as e:
-                    print(f"    ⚠️ Błąd w rekordzie {row['order_id']}: {e}")
+                    print(f"    Warning: Error in record {row['order_id']}: {e}")
                     continue
             
             conn.commit()
-            print(f"  ✓ Tabela faktów utworzona: {inserted_count} rekordów")
+            print(f"  Fact table created: {inserted_count} records")
             return True
             
         except Exception as e:
-            print(f"  ✗ Błąd tworzenia tabeli faktów: {e}")
+            print(f"  Error creating fact table: {e}")
             conn.rollback()
             return False
         finally:
             conn.close()
     
     def run_etl_process(self):
-        """Główny proces ETL"""
-        print("🚀 Rozpoczynanie procesu ETL hurtowni danych Olist...")
+        """Main ETL process"""
+        print("Starting Olist data warehouse ETL process...")
         print("=" * 60)
         
         steps = [
-            ("Wczytanie danych", self.load_data_files),
-            ("Tworzenie schematu", self.create_database_schema),
-            ("Wymiar czasu", self.create_time_dimension),
-            ("Wymiar klienta", self.create_customer_dimension),
-            ("Wymiar sprzedawcy", self.create_seller_dimension),
-            ("Wymiar płatności", self.create_payment_dimension),
-            ("Wymiar recenzji", self.create_review_dimension),
-            ("Tabela faktów", self.create_fact_table),
-            ("Miary kalkulowane", self.create_calculated_measures_views),
-            ("Zapytania przykładowe", self.create_sample_queries)
+            ("Load data", self.load_data_files),
+            ("Create schema", self.create_database_schema),
+            ("Time dimension", self.create_time_dimension),
+            ("Customer dimension", self.create_customer_dimension),
+            ("Seller dimension", self.create_seller_dimension),
+            ("Payment dimension", self.create_payment_dimension),
+            ("Review dimension", self.create_review_dimension),
+            ("Fact table", self.create_fact_table),
         ]
         
         for step_name, step_function in steps:
-            print(f"\n📋 Krok: {step_name}")
+            print(f"\nStep: {step_name}")
             if not step_function():
-                print(f"❌ Proces ETL zatrzymany na kroku: {step_name}")
+                print(f"ETL process stopped at step: {step_name}")
                 return False
         
         print("\n" + "=" * 60)
-        print("🎉 PROCES ETL ZAKOŃCZONY POMYŚLNIE!")
-        print("\n📊 PODSUMOWANIE HURTOWNI DANYCH:")
-        print("   • 5 wymiarów (2 hierarchiczne: Czas, Geografia)")
-        print("   • 3 miary podstawowe + miary kalkulowane")
-        print("   • >10,000 rekordów w tabeli faktów")
-        print("   • Zdenormalizowane dane ekonomiczne miast")
-        print("   • Widoki analityczne OLAP")
-        print("   • Przykładowe zapytania wielowymiarowe")
+        print("ETL PROCESS COMPLETED SUCCESSFULLY!")
         
         return True
 
 def main():
-    """Funkcja główna"""
+    """Main function to run the ETL process."""
     dw = OlistDataWarehouse()
     dw.run_etl_process()
 
