@@ -24,7 +24,7 @@ class ETLConfig:
     data_path: str = r'c:\Users\Kuba\PycharmProjects\hurtownie\data'
     
     # Processing parameters
-    batch_size: int = 1000
+    batch_size: int = 10000
     fuzzy_threshold: int = 80
     
     # Date ranges

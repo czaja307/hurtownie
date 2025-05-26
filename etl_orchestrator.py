@@ -55,9 +55,9 @@ class T5_ETLOrchestrator:
                 step_duration = time.time() - step_start
                 
                 if success:
-                    self.logger.info(f"✓ {step_name} completed successfully in {step_duration:.2f}s")
+                    self.logger.info(f"{step_name} completed successfully in {step_duration:.2f}s")
                 else:
-                    self.logger.error(f"✗ {step_name} FAILED after {step_duration:.2f}s")
+                    self.logger.error(f"{step_name} FAILED after {step_duration:.2f}s")
                     self.logger.error("ETL PROCESS TERMINATED DUE TO FAILURE")
                     return False
             
