@@ -54,10 +54,16 @@ class T1_DataExtractor:
                 self.logger.error(f"T1: File not found: {full_path}")
                 return False
             
-            # Load CSV with error handling
             df = pd.read_csv(full_path, encoding='utf-8')
+
+            if table_name == 'customers':
+                df = df.drop_duplicates(subset=['customer_id'], keep='last')
+                self.logger.info(f"T1: Deduplicated customers: {len(df)} records")
+            elif table_name == 'sellers':
+                df = df.drop_duplicates(subset=['seller_id'], keep='last')
+                self.logger.info(f"T1: Deduplicated sellers: {len(df)} records")
+
             self.data_frames[table_name] = df
-            
             self.logger.info(f"T1: Loaded {table_name}: {len(df)} records")
             return True
             

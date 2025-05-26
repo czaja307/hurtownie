@@ -63,20 +63,19 @@ class T3_DimensionBuilder:
                 quarter_name = f"Q{quarter_number}"
                 year_number = current_date.year
                 is_weekend = 1 if current_date.weekday() >= 5 else 0
-                is_holiday = 0  # Can be extended with Brazilian holidays
                 date_string = current_date.strftime('%Y-%m-%d')
                 
                 insert_sql = """
                 INSERT INTO DIM_Time 
                 (Date_Value, Day_Name, Day_Number, Week_Number, Month_Number, Month_Name,
-                 Quarter_Number, Quarter_Name, Year_Number, Is_Weekend, Is_Holiday, Date_String)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 Quarter_Number, Quarter_Name, Year_Number, Is_Weekend, Date_String)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 
                 cursor.execute(insert_sql, (
                     current_date.date(), day_name, day_number, week_number, 
                     month_number, month_name, quarter_number, quarter_name, 
-                    year_number, is_weekend, is_holiday, date_string
+                    year_number, is_weekend, date_string
                 ))
                 
                 inserted_count += 1

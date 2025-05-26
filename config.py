@@ -15,7 +15,7 @@ class ETLConfig:
     
     # Processing parameters
     batch_size: int = 10000
-    fuzzy_threshold: int = 80
+    fuzzy_threshold: int = 60
     
     # Date ranges
     start_date: str = '2016-01-01'
