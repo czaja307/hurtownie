@@ -1,18 +1,15 @@
-"""
-Enhanced Olist ETL System - Part 3: Main Orchestrator and Execution
-Final component that orchestrates the entire ETL process
-"""
-
-from enhanced_etl_system import *
-from etl_dimension_fact_builders import *
+from config import ETLConfig
+from utils import *
+from extract import T1_DataExtractor
+from schema import T2_SchemaManager
+from transform_load import T3_DimensionBuilder, T4_FactBuilder
 import time
-
 
 class T5_ETLOrchestrator:
     """Task 5: Main ETL process orchestrator with monitoring and validation"""
     
     def __init__(self, config: ETLConfig = None):
-        self.config = config or ETLConfig()
+        self.config = ETLConfig()
         self.logger = ETLLogger()
         self.metrics = ETLMetrics()
         
@@ -272,8 +269,8 @@ class T5_ETLOrchestrator:
         self.logger.info(f"Total records loaded: {total_records:,}")
         
         # Status indicators
-        integrity_status = "✓ PASSED" if integrity_ok else "✗ FAILED"
-        quality_status = "✓ PASSED" if quality_ok else "✗ FAILED"
+        integrity_status = "PASSED" if integrity_ok else "FAILED"
+        quality_status = "PASSED" if quality_ok else "FAILED"
         
         self.logger.info(f"Referential Integrity: {integrity_status}")
         self.logger.info(f"Data Quality: {quality_status}")
@@ -322,71 +319,8 @@ class T5_ETLOrchestrator:
             self.logger.info(f"  Total Warehouse Records: {total_warehouse_records:,}")
 
 
-class IncrementalETLOrchestrator(T5_ETLOrchestrator):
-    """Extended orchestrator for incremental ETL processing"""
-    
-    def __init__(self, config: ETLConfig = None, incremental_date: str = None):
-        super().__init__(config)
-        self.incremental_date = incremental_date
-        self.logger.info(f"Incremental ETL mode: Processing from {incremental_date}")
-    
-    def execute_incremental_etl(self) -> bool:
-        """Execute incremental ETL process"""
-        self.logger.info("STARTING INCREMENTAL ETL PROCESS")
-        
-        # This would implement delta loading logic
-        # For demonstration purposes, we'll show the structure
-        
-        incremental_steps = [
-            ("Identify_Changes", self._identify_changed_records),
-            ("Process_Deltas", self._process_delta_records),
-            ("Update_Dimensions", self._update_dimensions_incremental),
-            ("Update_Facts", self._update_facts_incremental),
-            ("Validate_Changes", self._validate_incremental_changes)
-        ]
-        
-        # Implementation would follow similar pattern as full ETL
-        # but with change detection and delta processing logic
-        
-        return True
-    
-    def _identify_changed_records(self) -> bool:
-        """Identify records that have changed since last ETL run"""
-        # Implementation for change detection
-        self.logger.info("Identifying changed records...")
-        return True
-    
-    def _process_delta_records(self) -> bool:
-        """Process only the changed records"""
-        # Implementation for delta processing  
-        self.logger.info("Processing delta records...")
-        return True
-    
-    def _update_dimensions_incremental(self) -> bool:
-        """Update dimensions with new/changed data"""
-        # Implementation for incremental dimension updates
-        self.logger.info("Updating dimensions incrementally...")
-        return True
-    
-    def _update_facts_incremental(self) -> bool:
-        """Update fact table with new/changed data"""
-        # Implementation for incremental fact updates
-        self.logger.info("Updating facts incrementally...")
-        return True
-    
-    def _validate_incremental_changes(self) -> bool:
-        """Validate incremental changes"""
-        # Implementation for validating incremental updates
-        self.logger.info("Validating incremental changes...")
-        return True
-
-
 def main():
     """Main entry point for ETL execution"""
-    print("Olist Data Warehouse ETL System v2.0")
-    print("=" * 50)
-    
-    # Configuration can be customized here
     config = ETLConfig()
     
     # Execute full ETL
@@ -394,10 +328,10 @@ def main():
     success = orchestrator.execute_full_etl()
     
     if success:
-        print("\n🎉 ETL PROCESS COMPLETED SUCCESSFULLY!")
+        print("\nETL PROCESS COMPLETED SUCCESSFULLY!")
         print("Your data warehouse is ready for analysis.")
     else:
-        print("\n❌ ETL PROCESS FAILED!")
+        print("\nETL PROCESS FAILED!")
         print("Please check the logs for error details.")
     
     return success
@@ -405,3 +339,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+ 
